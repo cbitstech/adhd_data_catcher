@@ -4,8 +4,10 @@ import hashlib
 import os
 import time
 import pandas
+import glob
+import zipfile
 
-import json
+from json import loads, dumps
 
 CONFIG = {
     'global': {
@@ -16,41 +18,49 @@ CONFIG = {
 
 class RobotPost:
     def index(self, json=None):
-        json_obj = json.loads(json)
-        
+        json_obj = loads(json)
+
         payload_str = json_obj['Payload']
-        
+
         m = hashlib.md5()
         m.update(json_obj['UserHash'] + json_obj['Operation'] + json_obj['Payload'])
-        
+
         checksum_str = m.hexdigest()
 
         result = {}
         result['Status'] = 'error'
         result['Payload'] = "{}"
-        
+
         if checksum_str == json_obj['Checksum']:
             result['Status'] = 'success'
-            
+
             timestamp = str(time.time())
-            
+
             # Output!
-            path = 'files' + os.sep + json_obj['UserHash'] + os.sep + timestamp + '.json'
+            path = 'files' + os.sep + json_obj['UserHash'] + os.sep + timestamp
             d = os.path.dirname(path)
             if not os.path.exists(d):
                 os.makedirs(d)
-            f = open(path, 'w')
+            f = open('%.json' % path, 'w')
+            f.write(dumps(json_obj, indent=2))
             f.close()
-        
+
+            data = pandas.read_json(json_obj, typ='series')
+            data.to_frame().to_excel('%.xsl' % path, 'w')
+            data.to_csv('%s.csv' % path)
+            f = open('%s.txt' % path, 'w')
+            f.write(data.to_string())
+            f.close()
+
         m = hashlib.md5()
         m.update(result['Status'] + result['Payload'])
 
         result['Checksum'] = m.hexdigest()
-        
+
         cherrypy.response.headers['Content-Type']= 'application/json'
 
-        return json.dumps(result, indent=2)
-        
+        return dumps(result, indent=2)
+
     index.exposed = True
 
 cherrypy.quickstart(RobotPost(), config=CONFIG)
